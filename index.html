@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaveSync — Emuladores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg-soft: #131825;
+    --border: #1f2937;
+    --accent: #00ff9d;
+    --accent-dim: #00cc7d;
+    --warn: #ffb800;
+    --danger: #ff3860;
+    --text: #e5e7eb;
+    --text-dim: #6b7280;
+    --ds: #e60012;
+    --gba: #5d2e8c;
+    --3ds: #00a3e0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; min-height: 100vh; }
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(0,255,157,0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(93,46,140,0.08) 0%, transparent 40%),
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 24px 24px, 24px 24px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 20px 80px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; }
+  .logo { font-family: 'VT323', monospace; font-size: 42px; letter-spacing: 2px; color: var(--accent); text-shadow: 0 0 20px rgba(0,255,157,0.4); }
+  .logo span { color: var(--text); }
+  .sub { color: var(--text-dim); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
+
+  .card { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 4px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-family: 'VT323', monospace; font-size: 24px; color: var(--accent); margin-bottom: 12px; letter-spacing: 1px; }
+  .card p { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+
+  button {
+    background: var(--accent); color: var(--bg); border: none; padding: 14px 22px;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px;
+    letter-spacing: 1px; text-transform: uppercase; cursor: pointer; border-radius: 3px;
+    transition: all 0.15s ease; width: 100%;
+  }
+  button:hover:not(:disabled) { background: var(--accent-dim); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,157,0.3); }
+  button:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.secondary:hover:not(:disabled) { background: rgba(0,255,157,0.08); }
+  button.danger { background: var(--danger); color: white; }
+
+  .btn-row { display: grid; gap: 10px; grid-template-columns: 1fr; }
+  @media (min-width: 600px) { .btn-row { grid-template-columns: 1fr 1fr; } }
+
+  .status { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg); border-radius: 3px; margin-bottom: 12px; font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.warn { background: var(--warn); }
+
+  .log { background: #050810; border: 1px solid var(--border); border-radius: 3px; padding: 12px; font-size: 11px; max-height: 240px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; }
+  .log-line { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+  .log-line:last-child { border: none; }
+  .log-line.ok { color: var(--accent); }
+  .log-line.err { color: var(--danger); }
+  .log-line.warn { color: var(--warn); }
+  .log-line .ts { color: var(--text-dim); margin-right: 8px; }
+
+  .file-list { background: var(--bg); border-radius: 3px; padding: 8px; max-height: 280px; overflow-y: auto; }
+  .file { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); font-size: 12px; gap: 10px; }
+  .file:last-child { border: none; }
+  .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-meta { color: var(--text-dim); font-size: 10px; }
+  .tag { display: inline-block; padding: 2px 6px; border-radius: 2px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; }
+  .tag.ds { background: rgba(230,0,18,0.15); color: #ff5566; }
+  .tag.gba { background: rgba(93,46,140,0.25); color: #b18de0; }
+  .tag.tds { background: rgba(0,163,224,0.15); color: #5cc4e8; }
+  .tag.unk { background: rgba(107,114,128,0.2); color: var(--text-dim); }
+
+  .empty { padding: 24px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+  details { background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 10px 14px; margin-top: 10px; }
+  summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+  details ol { margin: 12px 0 6px 20px; font-size: 12px; color: var(--text-dim); line-height: 1.8; }
+  details code { background: var(--bg-soft); padding: 1px 5px; border-radius: 2px; color: var(--accent); font-size: 11px; }
+
+  .toggle { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); margin-top: 12px; }
+  .toggle input { accent-color: var(--accent); }
+
+  .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">SAVE<span>SYNC</span></div>
+    <div class="sub">DS · GBA · 3DS — PC ↔ Móvil vía Google Drive</div>
+  </header>
+
+  <div class="card">
+    <h2>1. Conectar Google Drive</h2>
+    <div class="status">
+      <div class="dot" id="auth-dot"></div>
+      <div id="auth-status">No conectado</div>
+    </div>
+    <button id="auth-btn">Conectar con Google</button>
+    <details>
+      <summary>¿Primera vez? Leer esto</summary>
+      <ol>
+        <li>App crea una carpeta llamada <code>Sync Saves</code> en tu Drive.</li>
+        <li>Pulsa <b>Elegir carpeta local</b> y elige carpeta de saves del emulador.</li>
+        <li>Pulsa <b>Sincronizar</b>. Gana el archivo más nuevo.</li>
+        <li>Mismo proceso en móvil: misma cuenta Google, abre esta web, elige carpeta de saves del emulador del móvil.</li>
+      </ol>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>2. Carpeta local</h2>
+    <div class="status">
+      <div class="dot" id="folder-dot"></div>
+      <div id="folder-status">Sin elegir</div>
+    </div>
+    <button id="folder-btn" class="secondary" disabled>Elegir carpeta local</button>
+    <p style="margin-top:10px;font-size:11px;">⚠ Chrome/Edge en PC: acceso completo. iPhone/Safari: usar modo subida manual (próxima sección).</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Sincronizar</h2>
+    <div class="btn-row">
+      <button id="sync-btn" disabled>↻ Sincronizar ahora</button>
+      <button id="scan-btn" class="secondary" disabled>👁 Solo ver diferencias</button>
+    </div>
+    <div class="toggle">
+      <input type="checkbox" id="auto-sync">
+      <label for="auto-sync">Auto-sincronizar cada 60s</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Archivos</h2>
+    <div id="file-list" class="file-list">
+      <div class="empty">Aún no se ha escaneado nada</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Registro</h2>
+    <div id="log" class="log">
+      <div class="log-line"><span class="ts">--:--:--</span>Esperando conexión...</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+//  SaveSync - sincroniza carpeta local <-> Google Drive
+// ============================================================
+
+// >>> REEMPLAZA ESTE CLIENT_ID con el tuyo de Google Cloud Console <<<
+// Instrucciones: ver bloque al final del registro al cargar la página.
+const CLIENT_ID = 'PEGAR_AQUI_TU_CLIENT_ID.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const FOLDER_NAME = 'Sync Saves';
+
+// Extensiones reconocidas
+const EXT_DS  = ['.sav', '.dsv', '.duc'];
+const EXT_GBA = ['.sav', '.sa1', '.sa2', '.sa3', '.sa4'];
+const EXT_3DS = ['.sav', '.ups', '.dat'];
+const ALL_EXT = [...new Set([...EXT_DS, ...EXT_GBA, ...EXT_3DS])];
+
+let accessToken = null;
+let folderId = null;        // id de carpeta SaveSync en Drive
+let localDirHandle = null;  // FileSystemDirectoryHandle
+let autoTimer = null;
+
+// ---------- UI helpers ----------
+const $ = id => document.getElementById(id);
+function log(msg, type='') {
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  const ts = new Date().toTimeString().slice(0,8);
+  line.innerHTML = `<span class="ts">${ts}</span>${msg}`;
+  $('log').appendChild(line);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+function setAuthStatus(ok, msg) {
+  $('auth-dot').className = 'dot ' + (ok ? 'on' : '');
+  $('auth-status').textContent = msg;
+}
+function setFolderStatus(ok, msg) {
+  $('folder-dot').className = 'dot ' + (ok ? 'on' : '');
+  $('folder-status').textContent = msg;
+}
+function tagFor(name) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.dsv') || lower.endsWith('.duc')) return {cls:'ds', txt:'DS'};
+  if (lower.match(/\.sa[1-4]$/)) return {cls:'gba', txt:'GBA'};
+  // .sav puede ser cualquiera - mostrar genérico
+  if (lower.endsWith('.sav')) return {cls:'unk', txt:'SAV'};
+  return {cls:'unk', txt:'?'};
+}
+function isSaveFile(name) {
+  const lower = name.toLowerCase();
+  return ALL_EXT.some(e => lower.endsWith(e));
+}
+function fmtDate(ms) {
+  const d = new Date(ms);
+  return d.toLocaleString();
+}
+
+// ---------- Google Auth (OAuth implicit flow) ----------
+function loadGapi() {
+  return new Promise((resolve, reject) => {
+    if (window.google && google.accounts) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function doAuth() {
+  if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
+    log('❌ Falta configurar CLIENT_ID. Lee instrucciones abajo.', 'err');
+    showSetupHelp();
+    return;
+  }
+  await loadGapi();
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) {
+        log('Error auth: ' + resp.error, 'err');
+        return;
+      }
+      accessToken = resp.access_token;
+      setAuthStatus(true, 'Conectado a Google Drive');
+      log('✓ Autenticado con Google', 'ok');
+      await ensureFolder();
+      $('folder-btn').disabled = false;
+    }
+  });
+  tokenClient.requestAccessToken();
+}
+
+// ---------- Drive: asegurar carpeta SaveSync ----------
+async function ensureFolder() {
+  const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  const data = await r.json();
+  if (data.files && data.files.length > 0) {
+    folderId = data.files[0].id;
+    log(`✓ Carpeta '${FOLDER_NAME}' encontrada en Drive`, 'ok');
+  } else {
+    const cr = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+    });
+    const cd = await cr.json();
+    folderId = cd.id;
+    log(`✓ Carpeta '${FOLDER_NAME}' creada en Drive`, 'ok');
+  }
+}
+
+// ---------- Listar archivos de Drive ----------
+async function listDriveFiles() {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=1000`, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  const data = await r.json();
+  const map = new Map();
+  (data.files || []).forEach(f => {
+    map.set(f.name, {
+      id: f.id,
+      name: f.name,
+      modified: new Date(f.modifiedTime).getTime(),
+      size: parseInt(f.size || '0')
+    });
+  });
+  return map;
+}
+
+// ---------- Listar archivos locales ----------
+async function listLocalFiles() {
+  const map = new Map();
+  if (!localDirHandle) return map;
+  for await (const entry of localDirHandle.values()) {
+    if (entry.kind !== 'file') continue;
+    if (!isSaveFile(entry.name)) continue;
+    const file = await entry.getFile();
+    map.set(entry.name, {
+      handle: entry,
+      name: entry.name,
+      modified: file.lastModified,
+      size: file.size
+    });
+  }
+  return map;
+}
+
+// ---------- Subir archivo a Drive (crear o actualizar) ----------
+async function uploadToDrive(localFile, existingId) {
+  const file = await localFile.handle.getFile();
+  const metadata = {
+    name: localFile.name,
+    modifiedTime: new Date(localFile.modified).toISOString()
+  };
+  if (!existingId) metadata.parents = [folderId];
+
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', file);
+
+  const url = existingId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  const method = existingId ? 'PATCH' : 'POST';
+
+  const r = await fetch(url, {
+    method,
+    headers: { Authorization: 'Bearer ' + accessToken },
+    body: form
+  });
+  if (!r.ok) throw new Error('Subida falló: ' + r.status);
+  return r.json();
+}
+
+// ---------- Descargar de Drive a local ----------
+async function downloadFromDrive(driveFile) {
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  if (!r.ok) throw new Error('Descarga falló: ' + r.status);
+  const blob = await r.blob();
+  const fileHandle = await localDirHandle.getFileHandle(driveFile.name, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+  return blob.size;
+}
+
+// ---------- Comparar y sincronizar ----------
+async function doSync(dryRun=false) {
+  if (!folderId || !localDirHandle) {
+    log('Falta conectar Drive o elegir carpeta', 'err');
+    return;
+  }
+  log(dryRun ? '👁 Escaneando diferencias...' : '↻ Sincronizando...');
+
+  let driveFiles, localFiles;
+  try {
+    [driveFiles, localFiles] = await Promise.all([listDriveFiles(), listLocalFiles()]);
+  } catch (e) {
+    log('Error listando: ' + e.message, 'err');
+    return;
+  }
+
+  const allNames = new Set([...driveFiles.keys(), ...localFiles.keys()]);
+  const fileListEl = $('file-list');
+  fileListEl.innerHTML = '';
+  if (allNames.size === 0) {
+    fileListEl.innerHTML = '<div class="empty">Carpeta vacía. Sin saves para sincronizar.</div>';
+    return;
+  }
+
+  let uploads = 0, downloads = 0, skipped = 0;
+  const TOLERANCE_MS = 2000; // diferencia ≤ 2s = mismo archivo
+
+  for (const name of [...allNames].sort()) {
+    const d = driveFiles.get(name);
+    const l = localFiles.get(name);
+    const tag = tagFor(name);
+
+    let action = '', actionCls = '';
+    try {
+      if (l && !d) {
+        action = '⬆ subir';
+        if (!dryRun) { await uploadToDrive(l, null); uploads++; }
+      } else if (d && !l) {
+        action = '⬇ bajar';
+        if (!dryRun) { await downloadFromDrive(d); downloads++; }
+      } else if (l && d) {
+        const diff = l.modified - d.modified;
+        if (Math.abs(diff) <= TOLERANCE_MS) {
+          action = '✓ igual';
+          actionCls = 'ok';
+          skipped++;
+        } else if (diff > 0) {
+          action = '⬆ local más nuevo';
+          if (!dryRun) { await uploadToDrive(l, d.id); uploads++; }
+        } else {
+          action = '⬇ Drive más nuevo';
+          if (!dryRun) { await downloadFromDrive(d); downloads++; }
+        }
+      }
+    } catch (e) {
+      action = '✗ error';
+      actionCls = 'err';
+      log(`Error con ${name}: ${e.message}`, 'err');
+    }
+
+    const row = document.createElement('div');
+    row.className = 'file';
+    const mod = l ? l.modified : d.modified;
+    row.innerHTML = `
+      <span class="tag ${tag.cls}">${tag.txt}</span>
+      <div class="file-name">
+        <div>${name}</div>
+        <div class="file-meta">${fmtDate(mod)}</div>
+      </div>
+      <div class="file-meta ${actionCls}">${action}</div>
+    `;
+    fileListEl.appendChild(row);
+  }
+
+  if (dryRun) {
+    log(`👁 Escaneo: ${allNames.size} archivos vistos`, 'ok');
+  } else {
+    log(`✓ Sync OK — ⬆${uploads} ⬇${downloads} ✓${skipped}`, 'ok');
+  }
+}
+
+// ---------- Elegir carpeta local ----------
+async function pickFolder() {
+  if (!window.showDirectoryPicker) {
+    log('Tu navegador no soporta acceso a carpetas. Usa Chrome/Edge en PC.', 'err');
+    log('En iPhone/iPad este método no funciona — usa Chrome Android o PC.', 'warn');
+    return;
+  }
+  try {
+    localDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    setFolderStatus(true, 'Carpeta: ' + localDirHandle.name);
+    log(`✓ Carpeta local: ${localDirHandle.name}`, 'ok');
+    $('sync-btn').disabled = false;
+    $('scan-btn').disabled = false;
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
+  }
+}
+
+// ---------- Auto-sync ----------
+function toggleAutoSync(e) {
+  if (e.target.checked) {
+    autoTimer = setInterval(() => doSync(false), 60000);
+    log('⏱ Auto-sync activado (cada 60s)', 'warn');
+  } else {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    log('⏱ Auto-sync desactivado');
+  }
+}
+
+// ---------- Ayuda inicial ----------
+function showSetupHelp() {
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warn');
+  log('CONFIGURACIÓN (solo una vez):', 'warn');
+  log('1. Ir a console.cloud.google.com', 'warn');
+  log('2. Crear proyecto nuevo', 'warn');
+  log('3. APIs y servicios → Habilitar Google Drive API', 'warn');
+  log('4. Credenciales → Crear → ID cliente OAuth 2.0 → App web', 'warn');
+  log('5. Orígenes autorizados: añadir donde alojes este HTML', 'warn');
+  log('   (ej: http://localhost, o file:// no funciona en móvil)', 'warn');
+  log('6. Copiar Client ID y pegarlo en el código (línea CLIENT_ID)', 'warn');
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warn');
+}
+
+// ---------- Init ----------
+$('auth-btn').addEventListener('click', doAuth);
+$('folder-btn').addEventListener('click', pickFolder);
+$('sync-btn').addEventListener('click', () => doSync(false));
+$('scan-btn').addEventListener('click', () => doSync(true));
+$('auto-sync').addEventListener('change', toggleAutoSync);
+
+log('SaveSync v1.0 listo');
+if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
+  log('⚠ Falta configurar CLIENT_ID — ver pasos abajo', 'warn');
+  showSetupHelp();
+}
+if (!window.showDirectoryPicker) {
+  log('⚠ Navegador sin acceso a carpetas. Usa Chrome/Edge en PC o Chrome en Android.', 'warn');
+}
+</script>
+</body>
+</html>
