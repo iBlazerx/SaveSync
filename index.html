@@ -232,9 +232,9 @@ function tagFor(name) {
   const lower = name.toLowerCase();
   if (lower.endsWith('.dsv') || lower.endsWith('.duc')) return {cls:'ds', txt:'DS'};
   if (lower.match(/\.sa[1-4]$/)) return {cls:'gba', txt:'GBA'};
-  // .sav puede ser cualquiera - mostrar genérico
-  if (lower.endsWith('.sav')) return {cls:'unk', txt:'SAV'};
-  return {cls:'unk', txt:'?'};
+  if (lower.endsWith('.sav')) return {cls:'gba', txt:'SAV'};
+  if (name.includes('/')) return {cls:'tds', txt:'3DS'}; // saves de 3DS van en subcarpetas
+  return {cls:'unk', txt:'FILE'};
 }
 function isSaveFile(name) {
   const lower = name.toLowerCase();
@@ -343,6 +343,11 @@ async function ensureFolder() {
   }
 }
 
+// Separador para representar subcarpetas en nombres planos de Drive
+const PATH_SEP = '⟐';  // carácter raro que no aparece en nombres normales
+function toDriveNameFlat(relPath) { return relPath.split('/').join(PATH_SEP); }
+function fromDriveNameFlat(flat) { return flat.split(PATH_SEP).join('/'); }
+
 // ---------- Listar archivos de Drive ----------
 async function listDriveFiles() {
   await ensureToken();
@@ -353,9 +358,10 @@ async function listDriveFiles() {
   const data = await r.json();
   const map = new Map();
   (data.files || []).forEach(f => {
-    map.set(f.name, {
+    const realPath = fromDriveNameFlat(f.name); // recuperar ruta con /
+    map.set(realPath, {
       id: f.id,
-      name: f.name,
+      name: realPath,
       modified: new Date(f.modifiedTime).getTime(),
       size: parseInt(f.size || '0')
     });
@@ -363,20 +369,24 @@ async function listDriveFiles() {
   return map;
 }
 
-// ---------- Listar archivos locales ----------
-async function listLocalFiles() {
-  const map = new Map();
-  if (!localDirHandle) return map;
-  for await (const entry of localDirHandle.values()) {
-    if (entry.kind !== 'file') continue;
-    if (!isSaveFile(entry.name)) continue;
-    const file = await entry.getFile();
-    map.set(entry.name, {
-      handle: entry,
-      name: entry.name,
-      modified: file.lastModified,
-      size: file.size
-    });
+// ---------- Listar archivos locales (recursivo, todos) ----------
+async function listLocalFiles(dirHandle = localDirHandle, prefix = '', map = null) {
+  if (map === null) map = new Map();
+  if (!dirHandle) return map;
+  for await (const entry of dirHandle.values()) {
+    const relPath = prefix ? prefix + '/' + entry.name : entry.name;
+    if (entry.kind === 'directory') {
+      // entrar en subcarpetas recursivamente
+      await listLocalFiles(entry, relPath, map);
+    } else if (entry.kind === 'file') {
+      const file = await entry.getFile();
+      map.set(relPath, {
+        handle: entry,
+        name: relPath,
+        modified: file.lastModified,
+        size: file.size
+      });
+    }
   }
   return map;
 }
@@ -386,7 +396,7 @@ async function uploadToDrive(localFile, existingId) {
   await ensureToken();
   const file = await localFile.handle.getFile();
   const metadata = {
-    name: localFile.name,
+    name: toDriveNameFlat(localFile.name), // ruta aplanada
     modifiedTime: new Date(localFile.modified).toISOString()
   };
   if (!existingId) metadata.parents = [folderId];
@@ -417,7 +427,14 @@ async function downloadFromDrive(driveFile) {
   });
   if (!r.ok) throw new Error('Descarga falló: ' + r.status);
   const blob = await r.blob();
-  const fileHandle = await localDirHandle.getFileHandle(driveFile.name, { create: true });
+  // driveFile.name puede tener subcarpetas (a/b/archivo) - recrearlas
+  const parts = driveFile.name.split('/');
+  const fileName = parts.pop();
+  let dir = localDirHandle;
+  for (const sub of parts) {
+    dir = await dir.getDirectoryHandle(sub, { create: true });
+  }
+  const fileHandle = await dir.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(blob);
   await writable.close();
@@ -441,10 +458,12 @@ async function doSync(dryRun=false) {
   }
 
   const allNames = new Set([...driveFiles.keys(), ...localFiles.keys()]);
+  log(`📁 Local: ${localFiles.size} · Drive: ${driveFiles.size} · Total: ${allNames.size}`);
   const fileListEl = $('file-list');
   fileListEl.innerHTML = '';
   if (allNames.size === 0) {
-    fileListEl.innerHTML = '<div class="empty">Carpeta vacía. Sin saves para sincronizar.</div>';
+    fileListEl.innerHTML = '<div class="empty">Carpeta vacía. Sin archivos para sincronizar.</div>';
+    log('⚠ Carpeta local vacía o sin archivos legibles', 'warn');
     return;
   }
 
