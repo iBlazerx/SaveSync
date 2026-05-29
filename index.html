@@ -456,40 +456,45 @@ async function downloadFromDrive(driveFile) {
   });
   if (!r.ok) throw new Error('Descarga falló: ' + r.status);
   const blob = await r.blob();
-  // driveFile.name puede tener subcarpetas (a/b/archivo) - recrearlas
   const parts = driveFile.name.split('/');
   const fileName = parts.pop();
-  let dir = localDirHandle;
-  for (const sub of parts) {
-    dir = await dir.getDirectoryHandle(sub, { create: true });
-  }
 
-  async function writeOnce(recreate) {
-    if (recreate) {
-      // borrar el archivo viejo y crear uno nuevo (evita 'state changed' en Android)
-      try { await dir.removeEntry(fileName); } catch (e) {}
+  // Re-deriva la carpeta destino desde cero (handles frescos, sin estado viejo)
+  async function freshDir() {
+    let dir = localDirHandle;
+    for (const sub of parts) {
+      dir = await dir.getDirectoryHandle(sub, { create: true });
     }
-    const fileHandle = await dir.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable({ keepExistingData: false });
-    await writable.write(blob);
-    await writable.close();
+    return dir;
   }
 
-  const tries = 5;
+  const tries = 8;
+  let lastErr;
   for (let i = 0; i < tries; i++) {
     try {
-      await writeOnce(i >= 1); // a partir del 2º intento, borrar y recrear
+      const dir = await freshDir();
+      // En reintentos, borrar el archivo primero para forzar uno totalmente nuevo
+      if (i >= 1) {
+        try { await dir.removeEntry(fileName); } catch (e) {}
+        await new Promise(res => setTimeout(res, 150));
+      }
+      const fileHandle = await dir.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable({ keepExistingData: false });
+      await writable.write(blob);
+      await writable.close();
       return blob.size;
     } catch (e) {
+      lastErr = e;
       const stale = e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError'
-        || /state had changed|cached|NoModificationAllowed|lock/i.test(e.message || '');
+        || /state had changed|cached|NoModificationAllowed|lock|modif/i.test(e.message || '');
       if (stale && i < tries - 1) {
-        await new Promise(res => setTimeout(res, 300 * (i + 1)));
+        await new Promise(res => setTimeout(res, 400 * (i + 1))); // espera creciente
         continue;
       }
       throw e;
     }
   }
+  throw lastErr;
 }
 
 // ---------- Comparar y sincronizar ----------
