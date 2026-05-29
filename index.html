@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-store">
 <title>SaveSync — Emuladores</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' rx='3' fill='%231a1a1a'/%3E%3Cg fill='%23ffffff'%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='2' y='8' width='5' height='1'/%3E%3Crect x='6' y='9' width='1' height='1'/%3E%3Crect x='6' y='10' width='1' height='1'/%3E%3Crect x='2' y='11' width='5' height='1'/%3E%3C/g%3E%3Cg fill='%23bdbdbd'%3E%3Crect x='9' y='5' width='5' height='1'/%3E%3Crect x='9' y='6' width='1' height='1'/%3E%3Crect x='9' y='7' width='1' height='1'/%3E%3Crect x='9' y='8' width='5' height='1'/%3E%3Crect x='13' y='9' width='1' height='1'/%3E%3Crect x='13' y='10' width='1' height='1'/%3E%3Crect x='9' y='11' width='5' height='1'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -379,7 +381,7 @@ async function listLocalFiles(dirHandle = localDirHandle, prefix = '', map = nul
       // entrar en subcarpetas recursivamente
       await listLocalFiles(entry, relPath, map);
     } else if (entry.kind === 'file') {
-      const file = await entry.getFile();
+      const file = await getFileRetry(entry);
       map.set(relPath, {
         handle: entry,
         name: relPath,
@@ -391,10 +393,26 @@ async function listLocalFiles(dirHandle = localDirHandle, prefix = '', map = nul
   return map;
 }
 
+// Lee un archivo del handle reintentando si el estado cambió (típico en Android)
+async function getFileRetry(handle, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await handle.getFile();
+    } catch (e) {
+      const stale = e.name === 'InvalidStateError' || /state had changed|cached/i.test(e.message || '');
+      if (stale && i < tries - 1) {
+        await new Promise(r => setTimeout(r, 250 * (i + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // ---------- Subir archivo a Drive (crear o actualizar) ----------
 async function uploadToDrive(localFile, existingId) {
   await ensureToken();
-  const file = await localFile.handle.getFile();
+  const file = await getFileRetry(localFile.handle);
   const metadata = {
     name: toDriveNameFlat(localFile.name), // ruta aplanada
     modifiedTime: new Date(localFile.modified).toISOString()
