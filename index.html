@@ -101,6 +101,14 @@
 
   .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .verbadge {
+    position: fixed; bottom: 12px; right: 12px; z-index: 50;
+    background: #1a1a1a; color: #fff; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    padding: 5px 9px; border-radius: 3px; opacity: 0.75;
+    border: 1px solid #000;
+  }
 </style>
 </head>
 <body>
@@ -173,6 +181,8 @@
   </div>
 
 </div>
+
+<div class="verbadge">SaveSync v1.1</div>
 
 <script>
 // ============================================================
@@ -459,7 +469,6 @@ async function downloadFromDrive(driveFile) {
   const parts = driveFile.name.split('/');
   const fileName = parts.pop();
 
-  // Re-deriva la carpeta destino desde cero (handles frescos, sin estado viejo)
   async function freshDir() {
     let dir = localDirHandle;
     for (const sub of parts) {
@@ -469,32 +478,37 @@ async function downloadFromDrive(driveFile) {
   }
 
   const tries = 8;
-  let lastErr;
+  let lastErr, lastStep;
   for (let i = 0; i < tries; i++) {
+    let step = 'getDir';
     try {
       const dir = await freshDir();
-      // En reintentos, borrar el archivo primero para forzar uno totalmente nuevo
       if (i >= 1) {
+        step = 'removeOld';
         try { await dir.removeEntry(fileName); } catch (e) {}
         await new Promise(res => setTimeout(res, 150));
       }
+      step = 'getFileHandle';
       const fileHandle = await dir.getFileHandle(fileName, { create: true });
+      step = 'createWritable';
       const writable = await fileHandle.createWritable({ keepExistingData: false });
+      step = 'write';
       await writable.write(blob);
+      step = 'close';
       await writable.close();
       return blob.size;
     } catch (e) {
-      lastErr = e;
+      lastErr = e; lastStep = step;
       const stale = e.name === 'InvalidStateError' || e.name === 'NoModificationAllowedError'
         || /state had changed|cached|NoModificationAllowed|lock|modif/i.test(e.message || '');
       if (stale && i < tries - 1) {
-        await new Promise(res => setTimeout(res, 400 * (i + 1))); // espera creciente
+        await new Promise(res => setTimeout(res, 400 * (i + 1)));
         continue;
       }
-      throw e;
+      throw new Error(`[paso: ${lastStep} · tipo: ${e.name}] ${e.message}`);
     }
   }
-  throw lastErr;
+  throw new Error(`[paso: ${lastStep} · tipo: ${lastErr && lastErr.name}] ${lastErr && lastErr.message}`);
 }
 
 // ---------- Comparar y sincronizar ----------
@@ -650,7 +664,7 @@ $('sync-btn').addEventListener('click', () => doSync(false));
 $('scan-btn').addEventListener('click', () => doSync(true));
 $('auto-sync').addEventListener('change', toggleAutoSync);
 
-log('SaveSync v1.0 listo');
+log('SaveSync v1.1 listo');
 if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
   log('⚠ Falta configurar CLIENT_ID — ver pasos abajo', 'warn');
   showSetupHelp();
