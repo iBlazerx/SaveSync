@@ -182,7 +182,7 @@
 
 </div>
 
-<div class="verbadge">SaveSync v1.1</div>
+<div class="verbadge">SaveSync v1.2</div>
 
 <script>
 // ============================================================
@@ -364,7 +364,7 @@ function fromDriveNameFlat(flat) { return flat.split(PATH_SEP).join('/'); }
 async function listDriveFiles() {
   await ensureToken();
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=1000`, {
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size,md5Checksum)&pageSize=1000`, {
     headers: { Authorization: 'Bearer ' + accessToken }
   });
   const data = await r.json();
@@ -375,10 +375,57 @@ async function listDriveFiles() {
       id: f.id,
       name: realPath,
       modified: new Date(f.modifiedTime).getTime(),
-      size: parseInt(f.size || '0')
+      size: parseInt(f.size || '0'),
+      md5: f.md5Checksum || ''
     });
   });
   return map;
+}
+
+// ---------- MD5 (implementación compacta, igual formato que Drive) ----------
+function md5FromBuffer(buffer) {
+  const data = new Uint8Array(buffer);
+  function rl(x, c) { return (x << c) | (x >>> (32 - c)); }
+  function add(a, b) { return (a + b) & 0xFFFFFFFF; }
+  const s = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,
+             5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+             4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
+             6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  const K = [];
+  for (let i = 0; i < 64; i++) K[i] = (Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296)) & 0xFFFFFFFF;
+  const origLen = data.length;
+  const bitLen = origLen * 8;
+  const withOne = origLen + 1;
+  const padLen = (((withOne + 8 + 63) >> 6) << 6);
+  const msg = new Uint8Array(padLen);
+  msg.set(data);
+  msg[origLen] = 0x80;
+  for (let i = 0; i < 8; i++) msg[padLen - 8 + i] = (bitLen / Math.pow(2, 8 * i)) & 0xFF;
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  const M = new Uint32Array(16);
+  for (let off = 0; off < padLen; off += 64) {
+    for (let i = 0; i < 16; i++) {
+      M[i] = msg[off + i*4] | (msg[off + i*4 + 1] << 8) | (msg[off + i*4 + 2] << 16) | (msg[off + i*4 + 3] << 24);
+    }
+    let A = a0, B = b0, C = c0, D = d0;
+    for (let i = 0; i < 64; i++) {
+      let F, g;
+      if (i < 16) { F = (B & C) | (~B & D); g = i; }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5*i + 1) % 16; }
+      else if (i < 48) { F = B ^ C ^ D; g = (3*i + 5) % 16; }
+      else { F = C ^ (B | ~D); g = (7*i) % 16; }
+      F = add(add(add(F, A), K[i]), M[g]);
+      A = D; D = C; C = B;
+      B = add(B, rl(F, s[i]));
+    }
+    a0 = add(a0, A); b0 = add(b0, B); c0 = add(c0, C); d0 = add(d0, D);
+  }
+  function hex(n) {
+    let h = '';
+    for (let i = 0; i < 4; i++) h += ((n >>> (8*i)) & 0xFF).toString(16).padStart(2, '0');
+    return h;
+  }
+  return hex(a0) + hex(b0) + hex(c0) + hex(d0);
 }
 
 // ---------- Listar archivos locales (recursivo, todos) ----------
@@ -392,11 +439,13 @@ async function listLocalFiles(dirHandle = localDirHandle, prefix = '', map = nul
       await listLocalFiles(entry, relPath, map);
     } else if (entry.kind === 'file') {
       const file = await getFileRetry(entry);
+      const buf = await file.arrayBuffer();
       map.set(relPath, {
         handle: entry,
         name: relPath,
         modified: file.lastModified,
-        size: file.size
+        size: file.size,
+        md5: md5FromBuffer(buf)
       });
     }
   }
@@ -545,7 +594,6 @@ async function doSync(dryRun=false) {
   }
 
   let uploads = 0, downloads = 0, skipped = 0;
-  const TOLERANCE_MS = 2000; // diferencia ≤ 2s = mismo archivo
 
   for (const name of [...allNames].sort()) {
     const d = driveFiles.get(name);
@@ -561,17 +609,21 @@ async function doSync(dryRun=false) {
         action = '⬇ bajar';
         if (!dryRun) { await downloadFromDrive(d); downloads++; }
       } else if (l && d) {
-        const diff = l.modified - d.modified;
-        if (Math.abs(diff) <= TOLERANCE_MS) {
+        // Mismo contenido (MD5) = no hacer nada, da igual la fecha
+        if (l.md5 && l.md5 === d.md5) {
           action = '✓ igual';
           actionCls = 'ok';
           skipped++;
-        } else if (diff > 0) {
-          action = '⬆ local más nuevo';
-          if (!dryRun) { await uploadToDrive(l, d.id); uploads++; }
         } else {
-          action = '⬇ Drive más nuevo';
-          if (!dryRun) { await downloadFromDrive(d); downloads++; }
+          // contenido distinto -> gana el más nuevo
+          const diff = l.modified - d.modified;
+          if (diff >= 0) {
+            action = '⬆ local más nuevo';
+            if (!dryRun) { await uploadToDrive(l, d.id); uploads++; }
+          } else {
+            action = '⬇ Drive más nuevo';
+            if (!dryRun) { await downloadFromDrive(d); downloads++; }
+          }
         }
       }
     } catch (e) {
@@ -664,7 +716,7 @@ $('sync-btn').addEventListener('click', () => doSync(false));
 $('scan-btn').addEventListener('click', () => doSync(true));
 $('auto-sync').addEventListener('change', toggleAutoSync);
 
-log('SaveSync v1.1 listo');
+log('SaveSync v1.2 listo');
 if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
   log('⚠ Falta configurar CLIENT_ID — ver pasos abajo', 'warn');
   showSetupHelp();
