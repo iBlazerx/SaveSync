@@ -109,6 +109,26 @@
     padding: 5px 9px; border-radius: 3px; opacity: 0.75;
     border: 1px solid #000;
   }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 4px; padding: 12px;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px;
+    letter-spacing: 1px; cursor: pointer; text-transform: none;
+  }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .typegrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .typebox {
+    background: #fff; color: var(--text); border: 1.5px solid var(--border);
+    border-radius: 6px; padding: 22px 0;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+    letter-spacing: 1px; cursor: pointer; text-transform: none; width: 100%;
+    transition: all 0.12s ease;
+  }
+  .typebox:hover { border-color: var(--accent); }
+  .typebox.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -133,43 +153,88 @@
     </div>
     <button id="auth-btn">Conectar con Google</button>
     <button id="logout-btn" class="secondary" style="display:none;margin-top:8px;">Cerrar sesión</button>
-    <details>
-      <summary>¿Primera vez? Leer esto</summary>
-      <ol>
-        <li>App crea una carpeta llamada <code>Sync Saves</code> en tu Drive.</li>
-        <li>Pulsa <b>Elegir carpeta local</b> y elige carpeta de saves del emulador.</li>
-        <li>Pulsa <b>Sincronizar</b>. Gana el archivo más nuevo.</li>
-        <li>Mismo proceso en móvil: misma cuenta Google, abre esta web, elige carpeta de saves del emulador del móvil.</li>
-      </ol>
-    </details>
   </div>
 
-  <div class="card">
-    <h2>2. Carpeta local</h2>
-    <div class="status">
-      <div class="dot" id="folder-dot"></div>
-      <div id="folder-status">Sin elegir</div>
-    </div>
-    <button id="folder-btn" class="secondary" disabled>Elegir carpeta local</button>
-    <p style="margin-top:10px;font-size:11px;">⚠ Chrome/Edge en PC: acceso completo. iPhone/Safari: usar modo subida manual (próxima sección).</p>
+  <!-- Pestañas -->
+  <div class="tabs">
+    <button class="tab active" id="tab-saves">SAVES</button>
+    <button class="tab" id="tab-roms">ROMS</button>
   </div>
 
-  <div class="card">
-    <h2>3. Sincronizar</h2>
-    <div class="btn-row">
-      <button id="sync-btn" disabled>↻ Sincronizar ahora</button>
-      <button id="scan-btn" class="secondary" disabled>👁 Solo ver diferencias</button>
+  <!-- ===================== PESTAÑA SAVES ===================== -->
+  <div id="panel-saves">
+
+    <div class="card">
+      <h2>Tipo de save</h2>
+      <p>Elige qué tipo de partida vas a sincronizar. Se guarda en su subcarpeta de Drive.</p>
+      <div class="typegrid">
+        <button class="typebox" data-type="NDS">NDS</button>
+        <button class="typebox" data-type="GBA">GBA</button>
+        <button class="typebox" data-type="3DS">3DS</button>
+      </div>
     </div>
-    <div class="toggle">
-      <input type="checkbox" id="auto-sync">
-      <label for="auto-sync">Auto-sincronizar cada 60s</label>
+
+    <div class="card">
+      <h2>Carpeta local</h2>
+      <div class="status">
+        <div class="dot" id="folder-dot"></div>
+        <div id="folder-status">Sin elegir</div>
+      </div>
+      <button id="folder-btn" class="secondary" disabled>Elegir carpeta local</button>
+    </div>
+
+    <div class="card">
+      <h2>Sincronizar</h2>
+      <div class="btn-row">
+        <button id="sync-btn" disabled>↻ Sincronizar ahora</button>
+        <button id="scan-btn" class="secondary" disabled>👁 Ver diferencias</button>
+      </div>
+      <div class="toggle">
+        <input type="checkbox" id="auto-sync">
+        <label for="auto-sync">Auto-sincronizar cada 60s</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Archivos</h2>
+      <div id="file-list" class="file-list">
+        <div class="empty">Aún no se ha escaneado nada</div>
+      </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Archivos</h2>
-    <div id="file-list" class="file-list">
-      <div class="empty">Aún no se ha escaneado nada</div>
+  <!-- ===================== PESTAÑA ROMS ===================== -->
+  <div id="panel-roms" style="display:none;">
+
+    <div class="card">
+      <h2>Carpeta de roms</h2>
+      <p>Carpeta donde se bajarán las roms de Drive y desde donde se comparan.</p>
+      <div class="status">
+        <div class="dot" id="rom-folder-dot"></div>
+        <div id="rom-folder-status">Sin elegir</div>
+      </div>
+      <button id="rom-folder-btn" class="secondary" disabled>Elegir carpeta</button>
+    </div>
+
+    <div class="card">
+      <h2>Subir roms</h2>
+      <p>Elige archivos sueltos para subirlos a la carpeta ROMS de Drive.</p>
+      <button id="rom-upload-btn" disabled>⬆ Elegir rom(s) y subir</button>
+    </div>
+
+    <div class="card">
+      <h2>Sincronizar roms</h2>
+      <div class="btn-row">
+        <button id="rom-sync-btn" disabled>↻ Sincronizar ahora</button>
+        <button id="rom-scan-btn" class="secondary" disabled>👁 Ver diferencias</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Roms</h2>
+      <div id="rom-file-list" class="file-list">
+        <div class="empty">Aún no se ha escaneado nada</div>
+      </div>
     </div>
   </div>
 
@@ -182,7 +247,7 @@
 
 </div>
 
-<div class="verbadge">SaveSync v1.2</div>
+<div class="verbadge">SaveSync v1.3</div>
 
 <script>
 // ============================================================
@@ -202,11 +267,16 @@ const EXT_3DS = ['.sav', '.ups', '.dat'];
 const ALL_EXT = [...new Set([...EXT_DS, ...EXT_GBA, ...EXT_3DS])];
 
 let accessToken = null;
-let folderId = null;        // id de carpeta SaveSync en Drive
-let localDirHandle = null;  // FileSystemDirectoryHandle
+let folderId = null;        // id de carpeta raíz 'Sync Saves' en Drive
+let localDirHandle = null;  // carpeta local de saves
 let autoTimer = null;
 let tokenClient = null;     // cliente OAuth reutilizable
 let tokenExpiresAt = 0;     // timestamp cuando caduca el token
+
+// Subcarpetas de Drive (id por nombre): NDS, GBA, 3DS, ROMS
+const subFolderIds = {};
+let saveType = null;        // 'NDS' | 'GBA' | '3DS' elegido
+let romDirHandle = null;    // carpeta local de roms
 
 // ---------- UI helpers ----------
 const $ = id => document.getElementById(id);
@@ -239,6 +309,10 @@ function setAuthStatus(ok, msg) {
 function setFolderStatus(ok, msg) {
   $('folder-dot').className = 'dot ' + (ok ? 'on' : '');
   $('folder-status').textContent = msg;
+}
+function setRomFolderStatus(ok, msg) {
+  $('rom-folder-dot').className = 'dot ' + (ok ? 'on' : '');
+  $('rom-folder-status').textContent = msg;
 }
 function tagFor(name) {
   const lower = name.toLowerCase();
@@ -291,8 +365,11 @@ async function doAuth() {
         setAuthStatus(true, 'Conectado a Google Drive');
         log('✓ Autenticado con Google', 'ok');
         await ensureFolder();
-        $('folder-btn').disabled = false;
+        await ensureSubFolders();
+        $('rom-folder-btn').disabled = false;
+        $('rom-upload-btn').disabled = false;
         $('logout-btn').style.display = 'block';
+        log('Elige un tipo (NDS/GBA/3DS) para empezar con saves', 'warn');
       }
     });
   }
@@ -328,6 +405,10 @@ function doLogout() {
   $('folder-btn').disabled = true;
   $('sync-btn').disabled = true;
   $('scan-btn').disabled = true;
+  $('rom-folder-btn').disabled = true;
+  $('rom-upload-btn').disabled = true;
+  $('rom-sync-btn').disabled = true;
+  $('rom-scan-btn').disabled = true;
   $('logout-btn').style.display = 'none';
   if (autoTimer) { clearInterval(autoTimer); autoTimer = null; $('auto-sync').checked = false; }
   log('🔒 Sesión cerrada', 'warn');
@@ -355,15 +436,42 @@ async function ensureFolder() {
   }
 }
 
+// ---------- Crear/encontrar subcarpetas dentro de Sync Saves ----------
+async function ensureSubFolder(name) {
+  const q = encodeURIComponent(`name='${name}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  const data = await r.json();
+  if (data.files && data.files.length > 0) {
+    subFolderIds[name] = data.files[0].id;
+    return;
+  }
+  const cr = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [folderId] })
+  });
+  const cd = await cr.json();
+  subFolderIds[name] = cd.id;
+}
+
+async function ensureSubFolders() {
+  for (const name of ['NDS', 'GBA', '3DS', 'ROMS']) {
+    await ensureSubFolder(name);
+  }
+  log('✓ Subcarpetas NDS/GBA/3DS/ROMS listas', 'ok');
+}
+
 // Separador para representar subcarpetas en nombres planos de Drive
 const PATH_SEP = '⟐';  // carácter raro que no aparece en nombres normales
 function toDriveNameFlat(relPath) { return relPath.split('/').join(PATH_SEP); }
 function fromDriveNameFlat(flat) { return flat.split(PATH_SEP).join('/'); }
 
-// ---------- Listar archivos de Drive ----------
-async function listDriveFiles() {
+// ---------- Listar archivos de Drive (de una subcarpeta) ----------
+async function listDriveFiles(parentId) {
   await ensureToken();
-  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
   const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size,md5Checksum)&pageSize=1000`, {
     headers: { Authorization: 'Bearer ' + accessToken }
   });
@@ -469,14 +577,14 @@ async function getFileRetry(handle, tries = 4) {
 }
 
 // ---------- Subir archivo a Drive (crear o actualizar) ----------
-async function uploadToDrive(localFile, existingId) {
+async function uploadToDrive(localFile, existingId, parentId) {
   await ensureToken();
   const file = await getFileRetry(localFile.handle);
   const metadata = {
     name: toDriveNameFlat(localFile.name), // ruta aplanada
     modifiedTime: new Date(localFile.modified).toISOString()
   };
-  if (!existingId) metadata.parents = [folderId];
+  if (!existingId) metadata.parents = [parentId];
 
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -497,18 +605,18 @@ async function uploadToDrive(localFile, existingId) {
 }
 
 // Pide permiso de escritura sobre la carpeta (necesario en Android)
-async function ensureWritePermission() {
-  if (!localDirHandle || !localDirHandle.queryPermission) return true;
+async function ensureWritePermission(handle) {
+  if (!handle || !handle.queryPermission) return true;
   const opts = { mode: 'readwrite' };
   try {
-    if ((await localDirHandle.queryPermission(opts)) === 'granted') return true;
-    if ((await localDirHandle.requestPermission(opts)) === 'granted') return true;
+    if ((await handle.queryPermission(opts)) === 'granted') return true;
+    if ((await handle.requestPermission(opts)) === 'granted') return true;
   } catch (e) {}
   return false;
 }
 
 // ---------- Descargar de Drive a local ----------
-async function downloadFromDrive(driveFile) {
+async function downloadFromDrive(driveFile, destDirHandle) {
   await ensureToken();
   const r = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`, {
     headers: { Authorization: 'Bearer ' + accessToken }
@@ -519,7 +627,7 @@ async function downloadFromDrive(driveFile) {
   const fileName = parts.pop();
 
   async function freshDir() {
-    let dir = localDirHandle;
+    let dir = destDirHandle;
     for (const sub of parts) {
       dir = await dir.getDirectoryHandle(sub, { create: true });
     }
@@ -560,16 +668,18 @@ async function downloadFromDrive(driveFile) {
   throw new Error(`[paso: ${lastStep} · tipo: ${lastErr && lastErr.name}] ${lastErr && lastErr.message}`);
 }
 
-// ---------- Comparar y sincronizar ----------
-async function doSync(dryRun=false) {
-  if (!folderId || !localDirHandle) {
+// ---------- Comparar y sincronizar (genérico) ----------
+// opts: { dirHandle, parentId, listEl, dryRun }
+async function syncCore(opts) {
+  const { dirHandle, parentId, listEl, dryRun } = opts;
+  if (!parentId || !dirHandle) {
     log('Falta conectar Drive o elegir carpeta', 'err');
     return;
   }
   log(dryRun ? '👁 Escaneando diferencias...' : '↻ Sincronizando...');
 
   if (!dryRun) {
-    const canWrite = await ensureWritePermission();
+    const canWrite = await ensureWritePermission(dirHandle);
     if (!canWrite) {
       log('⚠ Sin permiso de escritura. Vuelve a elegir la carpeta y acepta "Editar".', 'warn');
     }
@@ -577,7 +687,7 @@ async function doSync(dryRun=false) {
 
   let driveFiles, localFiles;
   try {
-    [driveFiles, localFiles] = await Promise.all([listDriveFiles(), listLocalFiles()]);
+    [driveFiles, localFiles] = await Promise.all([listDriveFiles(parentId), listLocalFiles(dirHandle)]);
   } catch (e) {
     log('Error listando: ' + e.message, 'err');
     return;
@@ -585,11 +695,11 @@ async function doSync(dryRun=false) {
 
   const allNames = new Set([...driveFiles.keys(), ...localFiles.keys()]);
   log(`📁 Local: ${localFiles.size} · Drive: ${driveFiles.size} · Total: ${allNames.size}`);
-  const fileListEl = $('file-list');
+  const fileListEl = listEl;
   fileListEl.innerHTML = '';
   if (allNames.size === 0) {
     fileListEl.innerHTML = '<div class="empty">Carpeta vacía. Sin archivos para sincronizar.</div>';
-    log('⚠ Carpeta local vacía o sin archivos legibles', 'warn');
+    log('⚠ Carpeta vacía o sin archivos legibles', 'warn');
     return;
   }
 
@@ -604,10 +714,10 @@ async function doSync(dryRun=false) {
     try {
       if (l && !d) {
         action = '⬆ subir';
-        if (!dryRun) { await uploadToDrive(l, null); uploads++; }
+        if (!dryRun) { await uploadToDrive(l, null, parentId); uploads++; }
       } else if (d && !l) {
         action = '⬇ bajar';
-        if (!dryRun) { await downloadFromDrive(d); downloads++; }
+        if (!dryRun) { await downloadFromDrive(d, dirHandle); downloads++; }
       } else if (l && d) {
         // Mismo contenido (MD5) = no hacer nada, da igual la fecha
         if (l.md5 && l.md5 === d.md5) {
@@ -619,10 +729,10 @@ async function doSync(dryRun=false) {
           const diff = l.modified - d.modified;
           if (diff >= 0) {
             action = '⬆ local más nuevo';
-            if (!dryRun) { await uploadToDrive(l, d.id); uploads++; }
+            if (!dryRun) { await uploadToDrive(l, d.id, parentId); uploads++; }
           } else {
             action = '⬇ Drive más nuevo';
-            if (!dryRun) { await downloadFromDrive(d); downloads++; }
+            if (!dryRun) { await downloadFromDrive(d, dirHandle); downloads++; }
           }
         }
       }
@@ -635,7 +745,6 @@ async function doSync(dryRun=false) {
     const row = document.createElement('div');
     row.className = 'file';
     const mod = l ? l.modified : d.modified;
-    // Construir DOM seguro (sin innerHTML con datos externos)
     const tagEl = document.createElement('span');
     tagEl.className = 'tag ' + tag.cls;
     tagEl.textContent = tag.txt;
@@ -664,22 +773,86 @@ async function doSync(dryRun=false) {
   }
 }
 
-// ---------- Elegir carpeta local ----------
+// Wrappers: saves (subcarpeta según tipo) y roms (subcarpeta ROMS)
+async function doSync(dryRun=false) {
+  if (!saveType) { log('Elige primero un tipo: NDS, GBA o 3DS', 'warn'); return; }
+  if (!localDirHandle) { log('Elige primero la carpeta de saves', 'warn'); return; }
+  await syncCore({ dirHandle: localDirHandle, parentId: subFolderIds[saveType], listEl: $('file-list'), dryRun });
+}
+async function doSyncRoms(dryRun=false) {
+  if (!romDirHandle) { log('Elige primero la carpeta de roms', 'warn'); return; }
+  await syncCore({ dirHandle: romDirHandle, parentId: subFolderIds['ROMS'], listEl: $('rom-file-list'), dryRun });
+}
+
+// ---------- Elegir carpeta de saves ----------
 async function pickFolder() {
   if (!window.showDirectoryPicker) {
     log('Tu navegador no soporta acceso a carpetas. Usa Chrome/Edge en PC.', 'err');
-    log('En iPhone/iPad este método no funciona — usa Chrome Android o PC.', 'warn');
     return;
   }
   try {
     localDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
     setFolderStatus(true, 'Carpeta: ' + localDirHandle.name);
-    log(`✓ Carpeta local: ${localDirHandle.name}`, 'ok');
+    log(`✓ Carpeta saves: ${localDirHandle.name}`, 'ok');
     $('sync-btn').disabled = false;
     $('scan-btn').disabled = false;
+    await doSync(true); // escanear automáticamente
   } catch (e) {
     if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
   }
+}
+
+// ---------- Elegir carpeta de roms ----------
+async function pickRomFolder() {
+  if (!window.showDirectoryPicker) {
+    log('Tu navegador no soporta acceso a carpetas. Usa Chrome/Edge en PC.', 'err');
+    return;
+  }
+  try {
+    romDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    setRomFolderStatus(true, 'Carpeta: ' + romDirHandle.name);
+    log(`✓ Carpeta roms: ${romDirHandle.name}`, 'ok');
+    $('rom-sync-btn').disabled = false;
+    $('rom-scan-btn').disabled = false;
+    await doSyncRoms(true); // escanear automáticamente
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
+  }
+}
+
+// ---------- Subir roms sueltas a Drive ----------
+async function uploadRoms() {
+  if (!subFolderIds['ROMS']) { log('Conéctate primero a Google', 'warn'); return; }
+  if (!window.showOpenFilePicker) {
+    log('Tu navegador no soporta elegir archivos. Usa Chrome/Edge.', 'err');
+    return;
+  }
+  let handles;
+  try {
+    handles = await window.showOpenFilePicker({ multiple: true });
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error eligiendo archivos: ' + e.message, 'err');
+    return;
+  }
+  log(`⬆ Subiendo ${handles.length} rom(s)...`);
+  // Listar lo que ya hay en ROMS para no duplicar
+  let driveRoms;
+  try { driveRoms = await listDriveFiles(subFolderIds['ROMS']); } catch (e) { driveRoms = new Map(); }
+  let ok = 0;
+  for (const h of handles) {
+    try {
+      const file = await h.getFile();
+      const entry = { handle: h, name: file.name, modified: file.lastModified, size: file.size };
+      const existing = driveRoms.get(file.name);
+      await uploadToDrive(entry, existing ? existing.id : null, subFolderIds['ROMS']);
+      ok++;
+      log(`  ⬆ ${file.name}`, 'ok');
+    } catch (e) {
+      log(`  ✗ ${e.message}`, 'err');
+    }
+  }
+  log(`✓ Subidas ${ok} rom(s)`, 'ok');
+  if (romDirHandle) await doSyncRoms(true);
 }
 
 // ---------- Auto-sync ----------
@@ -694,18 +867,28 @@ function toggleAutoSync(e) {
   }
 }
 
+// ---------- Pestañas ----------
+function showTab(which) {
+  const saves = which === 'saves';
+  $('panel-saves').style.display = saves ? 'block' : 'none';
+  $('panel-roms').style.display = saves ? 'none' : 'block';
+  $('tab-saves').className = 'tab' + (saves ? ' active' : '');
+  $('tab-roms').className = 'tab' + (saves ? '' : ' active');
+}
+
+// ---------- Elegir tipo de save ----------
+function selectType(type) {
+  saveType = type;
+  document.querySelectorAll('.typebox').forEach(b => {
+    b.className = 'typebox' + (b.dataset.type === type ? ' sel' : '');
+  });
+  $('folder-btn').disabled = false;
+  log(`Tipo seleccionado: ${type} (Drive → Sync Saves/${type})`, 'ok');
+}
+
 // ---------- Ayuda inicial ----------
 function showSetupHelp() {
-  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warn');
-  log('CONFIGURACIÓN (solo una vez):', 'warn');
-  log('1. Ir a console.cloud.google.com', 'warn');
-  log('2. Crear proyecto nuevo', 'warn');
-  log('3. APIs y servicios → Habilitar Google Drive API', 'warn');
-  log('4. Credenciales → Crear → ID cliente OAuth 2.0 → App web', 'warn');
-  log('5. Orígenes autorizados: añadir donde alojes este HTML', 'warn');
-  log('   (ej: http://localhost, o file:// no funciona en móvil)', 'warn');
-  log('6. Copiar Client ID y pegarlo en el código (línea CLIENT_ID)', 'warn');
-  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warn');
+  log('Falta configurar CLIENT_ID en el código', 'warn');
 }
 
 // ---------- Init ----------
@@ -716,9 +899,20 @@ $('sync-btn').addEventListener('click', () => doSync(false));
 $('scan-btn').addEventListener('click', () => doSync(true));
 $('auto-sync').addEventListener('change', toggleAutoSync);
 
-log('SaveSync v1.2 listo');
+$('rom-folder-btn').addEventListener('click', pickRomFolder);
+$('rom-upload-btn').addEventListener('click', uploadRoms);
+$('rom-sync-btn').addEventListener('click', () => doSyncRoms(false));
+$('rom-scan-btn').addEventListener('click', () => doSyncRoms(true));
+
+$('tab-saves').addEventListener('click', () => showTab('saves'));
+$('tab-roms').addEventListener('click', () => showTab('roms'));
+document.querySelectorAll('.typebox').forEach(b => {
+  b.addEventListener('click', () => selectType(b.dataset.type));
+});
+
+log('SaveSync v1.3 listo');
 if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
-  log('⚠ Falta configurar CLIENT_ID — ver pasos abajo', 'warn');
+  log('⚠ Falta configurar CLIENT_ID', 'warn');
   showSetupHelp();
 }
 if (!window.showDirectoryPicker) {
