@@ -207,33 +207,21 @@
   <div id="panel-roms" style="display:none;">
 
     <div class="card">
-      <h2>Carpeta de roms</h2>
-      <p>Carpeta donde se bajarán las roms de Drive y desde donde se comparan.</p>
-      <div class="status">
-        <div class="dot" id="rom-folder-dot"></div>
-        <div id="rom-folder-status">Sin elegir</div>
-      </div>
-      <button id="rom-folder-btn" class="secondary" disabled>Elegir carpeta</button>
-    </div>
-
-    <div class="card">
       <h2>Subir roms</h2>
       <p>Elige archivos sueltos para subirlos a la carpeta ROMS de Drive.</p>
       <button id="rom-upload-btn" disabled>⬆ Elegir rom(s) y subir</button>
     </div>
 
     <div class="card">
-      <h2>Sincronizar roms</h2>
-      <div class="btn-row">
-        <button id="rom-sync-btn" disabled>↻ Sincronizar ahora</button>
-        <button id="rom-scan-btn" class="secondary" disabled>👁 Ver diferencias</button>
-      </div>
+      <h2>Descargar roms</h2>
+      <p>Mira las roms que hay en Drive y descarga la que quieras (te pedirá dónde guardarla).</p>
+      <button id="rom-list-btn" disabled>📂 Ver roms en Drive</button>
     </div>
 
     <div class="card">
-      <h2>Roms</h2>
+      <h2>Roms en Drive</h2>
       <div id="rom-file-list" class="file-list">
-        <div class="empty">Aún no se ha escaneado nada</div>
+        <div class="empty">Pulsa "Ver roms en Drive"</div>
       </div>
     </div>
   </div>
@@ -276,7 +264,6 @@ let tokenExpiresAt = 0;     // timestamp cuando caduca el token
 // Subcarpetas de Drive (id por nombre): NDS, GBA, 3DS, ROMS
 const subFolderIds = {};
 let saveType = null;        // 'NDS' | 'GBA' | '3DS' elegido
-let romDirHandle = null;    // carpeta local de roms
 
 // ---------- UI helpers ----------
 const $ = id => document.getElementById(id);
@@ -309,10 +296,6 @@ function setAuthStatus(ok, msg) {
 function setFolderStatus(ok, msg) {
   $('folder-dot').className = 'dot ' + (ok ? 'on' : '');
   $('folder-status').textContent = msg;
-}
-function setRomFolderStatus(ok, msg) {
-  $('rom-folder-dot').className = 'dot ' + (ok ? 'on' : '');
-  $('rom-folder-status').textContent = msg;
 }
 function tagFor(name) {
   const lower = name.toLowerCase();
@@ -366,8 +349,8 @@ async function doAuth() {
         log('✓ Autenticado con Google', 'ok');
         await ensureFolder();
         await ensureSubFolders();
-        $('rom-folder-btn').disabled = false;
         $('rom-upload-btn').disabled = false;
+        $('rom-list-btn').disabled = false;
         $('logout-btn').style.display = 'block';
         log('Elige un tipo (NDS/GBA/3DS) para empezar con saves', 'warn');
       }
@@ -405,10 +388,8 @@ function doLogout() {
   $('folder-btn').disabled = true;
   $('sync-btn').disabled = true;
   $('scan-btn').disabled = true;
-  $('rom-folder-btn').disabled = true;
   $('rom-upload-btn').disabled = true;
-  $('rom-sync-btn').disabled = true;
-  $('rom-scan-btn').disabled = true;
+  $('rom-list-btn').disabled = true;
   $('logout-btn').style.display = 'none';
   if (autoTimer) { clearInterval(autoTimer); autoTimer = null; $('auto-sync').checked = false; }
   log('🔒 Sesión cerrada', 'warn');
@@ -779,9 +760,67 @@ async function doSync(dryRun=false) {
   if (!localDirHandle) { log('Elige primero la carpeta de saves', 'warn'); return; }
   await syncCore({ dirHandle: localDirHandle, parentId: subFolderIds[saveType], listEl: $('file-list'), dryRun });
 }
-async function doSyncRoms(dryRun=false) {
-  if (!romDirHandle) { log('Elige primero la carpeta de roms', 'warn'); return; }
-  await syncCore({ dirHandle: romDirHandle, parentId: subFolderIds['ROMS'], listEl: $('rom-file-list'), dryRun });
+
+// Lista las roms que hay en Drive, cada una con botón de descarga
+async function listRoms() {
+  if (!subFolderIds['ROMS']) { log('Conéctate primero a Google', 'warn'); return; }
+  log('📂 Leyendo roms de Drive...');
+  let roms;
+  try { roms = await listDriveFiles(subFolderIds['ROMS']); } catch (e) { log('Error: ' + e.message, 'err'); return; }
+  const listEl = $('rom-file-list');
+  listEl.innerHTML = '';
+  if (roms.size === 0) {
+    listEl.innerHTML = '<div class="empty">No hay roms en Drive todavía</div>';
+    return;
+  }
+  for (const [name, d] of [...roms.entries()].sort()) {
+    const row = document.createElement('div');
+    row.className = 'file';
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'file-name';
+    const nameEl = document.createElement('div');
+    nameEl.textContent = name;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'file-meta';
+    metaEl.textContent = (d.size ? (d.size/1048576).toFixed(1) + ' MB · ' : '') + fmtDate(d.modified);
+    nameWrap.appendChild(nameEl);
+    nameWrap.appendChild(metaEl);
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.style.width = 'auto';
+    btn.style.padding = '8px 12px';
+    btn.style.fontSize = '11px';
+    btn.textContent = '⬇ Descargar';
+    btn.addEventListener('click', () => downloadRom(d, btn));
+    row.appendChild(nameWrap);
+    row.appendChild(btn);
+    listEl.appendChild(row);
+  }
+  log(`✓ ${roms.size} rom(s) en Drive`, 'ok');
+}
+
+// Descarga una rom concreta: pide carpeta destino y la guarda
+async function downloadRom(d, btn) {
+  if (!window.showDirectoryPicker) { log('Tu navegador no soporta elegir carpeta. Usa Chrome/Edge.', 'err'); return; }
+  let destDir;
+  try {
+    destDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
+    return;
+  }
+  try {
+    const ok = await ensureWritePermission(destDir);
+    if (!ok) { log('Sin permiso de escritura en esa carpeta', 'warn'); return; }
+    log(`⬇ Descargando ${d.name}...`);
+    if (btn) { btn.textContent = '...'; btn.disabled = true; }
+    await downloadFromDrive(d, destDir);
+    log(`✓ ${d.name} descargada en ${destDir.name}`, 'ok');
+  } catch (e) {
+    log(`Error descargando ${d.name}: ${e.message}`, 'err');
+  } finally {
+    if (btn) { btn.textContent = '⬇ Descargar'; btn.disabled = false; }
+  }
 }
 
 // ---------- Elegir carpeta de saves ----------
@@ -802,24 +841,6 @@ async function pickFolder() {
   }
 }
 
-// ---------- Elegir carpeta de roms ----------
-async function pickRomFolder() {
-  if (!window.showDirectoryPicker) {
-    log('Tu navegador no soporta acceso a carpetas. Usa Chrome/Edge en PC.', 'err');
-    return;
-  }
-  try {
-    romDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    setRomFolderStatus(true, 'Carpeta: ' + romDirHandle.name);
-    log(`✓ Carpeta roms: ${romDirHandle.name}`, 'ok');
-    $('rom-sync-btn').disabled = false;
-    $('rom-scan-btn').disabled = false;
-    await doSyncRoms(true); // escanear automáticamente
-  } catch (e) {
-    if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
-  }
-}
-
 // ---------- Subir roms sueltas a Drive ----------
 async function uploadRoms() {
   if (!subFolderIds['ROMS']) { log('Conéctate primero a Google', 'warn'); return; }
@@ -835,7 +856,6 @@ async function uploadRoms() {
     return;
   }
   log(`⬆ Subiendo ${handles.length} rom(s)...`);
-  // Listar lo que ya hay en ROMS para no duplicar
   let driveRoms;
   try { driveRoms = await listDriveFiles(subFolderIds['ROMS']); } catch (e) { driveRoms = new Map(); }
   let ok = 0;
@@ -852,7 +872,7 @@ async function uploadRoms() {
     }
   }
   log(`✓ Subidas ${ok} rom(s)`, 'ok');
-  if (romDirHandle) await doSyncRoms(true);
+  await listRoms();
 }
 
 // ---------- Auto-sync ----------
@@ -899,10 +919,8 @@ $('sync-btn').addEventListener('click', () => doSync(false));
 $('scan-btn').addEventListener('click', () => doSync(true));
 $('auto-sync').addEventListener('change', toggleAutoSync);
 
-$('rom-folder-btn').addEventListener('click', pickRomFolder);
 $('rom-upload-btn').addEventListener('click', uploadRoms);
-$('rom-sync-btn').addEventListener('click', () => doSyncRoms(false));
-$('rom-scan-btn').addEventListener('click', () => doSyncRoms(true));
+$('rom-list-btn').addEventListener('click', listRoms);
 
 $('tab-saves').addEventListener('click', () => showTab('saves'));
 $('tab-roms').addEventListener('click', () => showTab('roms'));
