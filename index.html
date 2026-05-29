@@ -452,11 +452,24 @@ async function downloadFromDrive(driveFile) {
   for (const sub of parts) {
     dir = await dir.getDirectoryHandle(sub, { create: true });
   }
-  const fileHandle = await dir.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
-  return blob.size;
+  // Escribir reintentando si el estado cambió en disco (típico en Android)
+  const tries = 4;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const fileHandle = await dir.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return blob.size;
+    } catch (e) {
+      const stale = e.name === 'InvalidStateError' || /state had changed|cached|NoModificationAllowed/i.test(e.message || '');
+      if (stale && i < tries - 1) {
+        await new Promise(res => setTimeout(res, 300 * (i + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 // ---------- Comparar y sincronizar ----------
