@@ -79,7 +79,7 @@
   .log-line .ts { color: var(--text-dim); flex-shrink: 0; }
 
   .file-list { background: var(--bg); border: 1px solid var(--border-soft); border-radius: 3px; padding: 4px; max-height: 280px; overflow-y: auto; }
-  .file { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eeeeee; font-size: 12px; gap: 10px; }
+  .file { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eeeeee; font-size: 12px; gap: 10px; flex-wrap: wrap; }
   .file:last-child { border: none; }
   .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file-meta { color: var(--text-dim); font-size: 10px; }
@@ -129,6 +129,20 @@
   }
   .typebox:hover { border-color: var(--accent); }
   .typebox.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .progress {
+    position: relative; width: 100%; height: 16px; margin-top: 8px;
+    background: #eee; border-radius: 3px; overflow: hidden; flex-basis: 100%;
+  }
+  .progress-fill {
+    height: 100%; width: 0%; background: var(--accent);
+    transition: width 0.15s ease;
+  }
+  .progress-pct {
+    position: absolute; top: 0; left: 0; right: 0; line-height: 16px;
+    text-align: center; font-size: 10px; font-weight: 700; color: #fff;
+    mix-blend-mode: difference;
+  }
 </style>
 </head>
 <body>
@@ -235,7 +249,7 @@
 
 </div>
 
-<div class="verbadge">SaveSync v1.3</div>
+<div class="verbadge">SaveSync v1.4</div>
 
 <script>
 // ============================================================
@@ -597,13 +611,33 @@ async function ensureWritePermission(handle) {
 }
 
 // ---------- Descargar de Drive a local ----------
-async function downloadFromDrive(driveFile, destDirHandle) {
+async function downloadFromDrive(driveFile, destDirHandle, onProgress) {
   await ensureToken();
   const r = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`, {
     headers: { Authorization: 'Bearer ' + accessToken }
   });
   if (!r.ok) throw new Error('Descarga falló: ' + r.status);
-  const blob = await r.blob();
+
+  // Leer el cuerpo por trozos para poder mostrar progreso
+  const total = driveFile.size || parseInt(r.headers.get('content-length') || '0');
+  let blob;
+  if (onProgress && r.body && total > 0) {
+    const reader = r.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      onProgress(Math.min(100, Math.round(received / total * 100)));
+    }
+    blob = new Blob(chunks);
+  } else {
+    blob = await r.blob();
+    if (onProgress) onProgress(100);
+  }
+
   const parts = driveFile.name.split('/');
   const fileName = parts.pop();
 
@@ -791,7 +825,7 @@ async function listRoms() {
     btn.style.padding = '8px 12px';
     btn.style.fontSize = '11px';
     btn.textContent = '⬇ Descargar';
-    btn.addEventListener('click', () => downloadRom(d, btn));
+    btn.addEventListener('click', () => downloadRom(d, btn, row));
     row.appendChild(nameWrap);
     row.appendChild(btn);
     listEl.appendChild(row);
@@ -800,7 +834,7 @@ async function listRoms() {
 }
 
 // Descarga una rom concreta: pide carpeta destino y la guarda
-async function downloadRom(d, btn) {
+async function downloadRom(d, btn, row) {
   if (!window.showDirectoryPicker) { log('Tu navegador no soporta elegir carpeta. Usa Chrome/Edge.', 'err'); return; }
   let destDir;
   try {
@@ -809,17 +843,36 @@ async function downloadRom(d, btn) {
     if (e.name !== 'AbortError') log('Error eligiendo carpeta: ' + e.message, 'err');
     return;
   }
+
+  // Crear barra de progreso bajo la fila
+  let bar, fill, pct;
+  if (row) {
+    bar = document.createElement('div');
+    bar.className = 'progress';
+    fill = document.createElement('div');
+    fill.className = 'progress-fill';
+    pct = document.createElement('span');
+    pct.className = 'progress-pct';
+    pct.textContent = '0%';
+    bar.appendChild(fill);
+    bar.appendChild(pct);
+    row.appendChild(bar);
+  }
+  const setPct = (p) => { if (fill) fill.style.width = p + '%'; if (pct) pct.textContent = p + '%'; };
+
   try {
     const ok = await ensureWritePermission(destDir);
     if (!ok) { log('Sin permiso de escritura en esa carpeta', 'warn'); return; }
     log(`⬇ Descargando ${d.name}...`);
     if (btn) { btn.textContent = '...'; btn.disabled = true; }
-    await downloadFromDrive(d, destDir);
+    await downloadFromDrive(d, destDir, setPct);
+    setPct(100);
     log(`✓ ${d.name} descargada en ${destDir.name}`, 'ok');
   } catch (e) {
     log(`Error descargando ${d.name}: ${e.message}`, 'err');
   } finally {
     if (btn) { btn.textContent = '⬇ Descargar'; btn.disabled = false; }
+    if (bar) setTimeout(() => bar.remove(), 1500);
   }
 }
 
@@ -894,6 +947,7 @@ function showTab(which) {
   $('panel-roms').style.display = saves ? 'none' : 'block';
   $('tab-saves').className = 'tab' + (saves ? ' active' : '');
   $('tab-roms').className = 'tab' + (saves ? '' : ' active');
+  try { localStorage.setItem('ss_tab', which); } catch (e) {}
 }
 
 // ---------- Elegir tipo de save ----------
@@ -903,6 +957,7 @@ function selectType(type) {
     b.className = 'typebox' + (b.dataset.type === type ? ' sel' : '');
   });
   $('folder-btn').disabled = false;
+  try { localStorage.setItem('ss_type', type); } catch (e) {}
   log(`Tipo seleccionado: ${type} (Drive → Sync Saves/${type})`, 'ok');
 }
 
@@ -928,7 +983,7 @@ document.querySelectorAll('.typebox').forEach(b => {
   b.addEventListener('click', () => selectType(b.dataset.type));
 });
 
-log('SaveSync v1.3 listo');
+log('SaveSync v1.4 listo');
 if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
   log('⚠ Falta configurar CLIENT_ID', 'warn');
   showSetupHelp();
@@ -936,6 +991,13 @@ if (CLIENT_ID.startsWith('PEGAR_AQUI')) {
 if (!window.showDirectoryPicker) {
   log('⚠ Navegador sin acceso a carpetas. Usa Chrome/Edge en PC o Chrome en Android.', 'warn');
 }
+// restaurar tipo y pestaña recordados
+try {
+  const t = localStorage.getItem('ss_type');
+  if (t) selectType(t);
+  const tab = localStorage.getItem('ss_tab');
+  if (tab) showTab(tab);
+} catch (e) {}
 </script>
 </body>
 </html>
